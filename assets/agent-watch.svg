@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144" role="img" aria-labelledby="title description">
+  <title id="title">Agent Watch</title>
+  <desc id="description">An eye inside an open feedback orbit</desc>
+  <rect width="144" height="144" rx="27" fill="#17392e"/>
+  <circle cx="72" cy="72" r="52" fill="none" stroke="#a6e2a1" stroke-width="3" stroke-dasharray="230 97" stroke-linecap="round" transform="rotate(-118 72 72)"/>
+  <path d="M116 34l10 9-13 3" fill="none" stroke="#a6e2a1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M31 72c13-19 27-28 41-28s28 9 41 28c-13 19-27 28-41 28s-28-9-41-28z" fill="none" stroke="#e7f2e1" stroke-width="3"/>
+  <circle cx="72" cy="72" r="12" fill="#a6e2a1"/>
+  <circle cx="72" cy="72" r="4" fill="#17392e"/>
+</svg>

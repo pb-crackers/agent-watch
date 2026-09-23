@@ -1,0 +1,19 @@
+{
+  "name": "agent-watch",
+  "version": "0.1.0",
+  "description": "Local autonomous harness improvement for Pi, guided by Jev",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.13.0" },
+  "bin": { "agent-watch": "./src/cli.mjs" },
+  "keywords": ["pi-package", "agent-evals", "jev"],
+  "files": ["assets", "docs", "extensions", "scripts", "skills", "src", "LICENSE", "README.md"],
+  "pi": { "extensions": ["./extensions/agent-watch.js"], "skills": ["./skills/agent-watch"] },
+  "scripts": {
+    "test": "node --test",
+    "demo": "node scripts/demo.mjs",
+    "jev:smoke": "node scripts/jev-smoke.mjs",
+    "typecheck": "node --check src/core.mjs && node --check src/store.mjs && node --check src/tree.mjs && node --check src/evals.mjs && node --check src/daemon.mjs && node --check src/cli.mjs && node --check extensions/agent-watch.js",
+    "build": "npm run typecheck"
+  }
+}

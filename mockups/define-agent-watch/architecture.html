@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Watch · Architecture</title>
+  <style>
+    :root { color-scheme: light; --ink:#172b29; --muted:#60726e; --line:#cad6d1; --paper:#f4f3ec; --card:#fffef9; --green:#186b54; --mint:#d9ebdf; --amber:#a15421; --sand:#f6e6cf; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif; }
+    .wrap { max-width:1240px; margin:auto; padding:44px clamp(22px,5vw,72px) 90px; }
+    header { border-bottom:1px solid var(--line); padding-bottom:26px; display:flex; align-items:flex-start; justify-content:space-between; gap:24px; }
+    .eyebrow, .tag, .step { font:700 11px/1.3 ui-monospace,SFMono-Regular,monospace; letter-spacing:.12em; text-transform:uppercase; }
+    .eyebrow { color:var(--green); }
+    h1 { font:normal clamp(48px,7vw,84px)/.98 Georgia,serif; letter-spacing:-.055em; margin:15px 0 18px; }
+    header p { max-width:640px; margin:0; font-size:18px; color:var(--muted); }
+    .edition { border:1px solid var(--line); padding:8px 12px; border-radius:30px; color:var(--muted); white-space:nowrap; }
+    h2 { font:normal 32px/1.1 Georgia,serif; letter-spacing:-.025em; margin:0 0 20px; }
+    section { margin-top:56px; }
+    .section-head { display:flex; justify-content:space-between; align-items:baseline; gap:18px; }
+    .section-head span { color:var(--muted); font-size:13px; }
+    .diagram { border:1px solid var(--line); border-radius:20px; background:var(--card); padding:clamp(20px,3vw,38px); box-shadow:0 14px 34px #1d45300b; }
+    .flow { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:24px 20px; }
+    .node { min-height:142px; padding:20px; border:1px solid var(--line); border-radius:13px; background:#fff; position:relative; }
+    .node:not(.end)::after { content:'→'; position:absolute; right:-18px; top:45%; color:var(--green); font:26px Georgia,serif; }
+    .node strong { display:block; margin:13px 0 5px; font:normal 23px/1.05 Georgia,serif; }
+    .node small { display:block; color:var(--muted); line-height:1.4; }
+    .node.signal { background:var(--mint); border-color:#a3c9af; }
+    .node.jev { background:var(--ink); border-color:var(--ink); color:white; }
+    .node.jev small, .node.jev .step { color:#c4dfd2; }
+    .node.action { background:var(--sand); border-color:#e4c7a3; }
+    .node.action .step { color:var(--amber); }
+    .loop { margin-top:20px; border:1px dashed #90b5a0; background:#f2f8f2; color:#205a45; padding:15px 20px; border-radius:10px; display:flex; gap:18px; align-items:center; }
+    .loop b { font:normal 28px Georgia,serif; }
+    .sidecar { margin-top:18px; display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+    .aside { border-top:1px solid var(--line); padding:16px 2px 0; color:var(--muted); }
+    .aside strong { color:var(--ink); display:block; margin-bottom:5px; }
+    .aside code, .rule code { font-size:.9em; color:var(--green); }
+    .details { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+    .detail { padding:26px; background:#fffef9; border:1px solid var(--line); border-radius:14px; }
+    .detail h3 { font:normal 23px Georgia,serif; margin:0 0 10px; }
+    .detail p { margin:0; color:var(--muted); }
+    .rules { border-top:1px solid var(--line); padding-top:21px; display:grid; grid-template-columns:1fr 2fr; gap:20px; }
+    .rules h2 { margin:0; }
+    .rules ul { margin:0; padding-left:20px; color:var(--muted); }
+    .rules li + li { margin-top:8px; }
+    footer { margin-top:60px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; }
+    @media(max-width:850px) { .flow { grid-template-columns:repeat(2,minmax(0,1fr)); } .node:nth-child(2)::after,.node:nth-child(6)::after { display:none; } .node:nth-child(4)::after { content:'↙'; right:auto; left:-18px; top:auto; bottom:-24px; } }
+    @media(max-width:550px) { header { display:block; } .edition { display:inline-block; margin-top:20px; } .flow,.sidecar,.details,.rules { grid-template-columns:1fr; } .node { min-height:auto; } .node:not(.end)::after,.node:nth-child(4)::after { content:'↓'; display:block; top:auto; bottom:-26px; left:50%; right:auto; } .section-head { display:block; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <div><div class="eyebrow">Agent Watch / System architecture</div><h1>The harness<br>that learns.</h1><p>Pi runs as usual. Agent Watch watches the conversation, asks Jev what went wrong, changes the harness, and learns from what happens next.</p></div>
+      <span class="edition eyebrow">Pi first · concept</span>
+    </header>
+
+    <section aria-labelledby="flow-title">
+      <div class="section-head"><h2 id="flow-title">The autonomous loop</h2><span>One improvement at a time · no rating prompts</span></div>
+      <div class="diagram">
+        <div class="flow" aria-label="Pi conversation to observation to evaluation to improvement and validation">
+          <div class="node signal"><span class="step">01 / Signal</span><strong>Pi conversation</strong><small>User corrections, requests, agent responses, tools, skills, errors.</small></div>
+          <div class="node"><span class="step">02 / Capture</span><strong>Observer</strong><small>Pi extension streams events to a local background process.</small></div>
+          <div class="node"><span class="step">03 / Focus</span><strong>Sliding window</strong><small>Current task + recent turns, not the entire transcript each time.</small></div>
+          <div class="node jev"><span class="step">04 / Route</span><strong>Jev decision tree</strong><small>Change warranted? Which observed component? What change direction? Each answer selects the next question.</small></div>
+          <div class="node"><span class="step">05 / Decide</span><strong>Controller</strong><small>Wait for a persistent signal. Enforce limits in code.</small></div>
+          <div class="node action"><span class="step">06 / Draft</span><strong>Headless Pi</strong><small>Drafts 2–3 distinct small harness patches in isolation; code rejects unsafe ones.</small></div>
+          <div class="node jev"><span class="step">07 / Select</span><strong>Jev chooses</strong><small>Is any draft suitable? Which validated patch—or none? Pi does not pick its own fix.</small></div>
+          <div class="node end signal"><span class="step">08 / Learn</span><strong>Apply + watch</strong><small>Snapshot and log the chosen diff. Later turns decide keep or rollback.</small></div>
+        </div>
+        <div class="loop"><b>↶</b><span>Every new user message and tool result becomes fresh feedback for the next window. The conversation itself is the evaluation signal.</span></div>
+        <div class="sidecar"><div class="aside"><strong>Visible in Pi + browser</strong>Live status, findings, active change, and history. Nothing is injected into the observed agent’s context.</div><div class="aside"><strong>Readable on disk</strong><code>.agent-watch/changes.md</code> records the candidates, Jev’s selection, applied diff, and rollback history.</div></div>
+      </div>
+    </section>
+
+    <section aria-labelledby="roles-title"><h2 id="roles-title">Who does what</h2><div class="details">
+      <div class="detail"><h3>Jev decides in stages</h3><p>Successive questions choose whether to change, where, how, which exact diff, and whether it helped. Uncertain branches stop. Jev never writes code.</p></div>
+      <div class="detail"><h3>Pi drafts alternatives</h3><p>A separate headless run drafts distinct isolated diffs to instructions, settings, prompts, skills, or extensions. It cannot choose what goes live.</p></div>
+      <div class="detail"><h3>Code enforces</h3><p>File boundaries, redaction, rate limits, atomic writes, conflict checks, snapshots, and rollback are deterministic—not model decisions.</p></div>
+      <div class="detail"><h3>The user can inspect</h3><p>CLI and local web UI expose the live state. An emergency pause stops improvements and restores an unverified change.</p></div>
+    </div></section>
+
+    <section class="rules" aria-labelledby="boundary-title"><h2 id="boundary-title">The boundary</h2><ul>
+      <li>Only project-local Pi harness files can be changed; application source and global config stay untouched.</li>
+      <li>Secrets are redacted before local storage or Jev requests.</li>
+      <li>One candidate at a time. Every applied diff has a previous snapshot and an entry in <code>.agent-watch/changes.md</code>.</li>
+      <li>If Agent Watch or Jev is unavailable, Pi keeps working.</li>
+    </ul></section>
+    <footer>Architecture concept · Source: docs/architecture.md · No live services required to view this page.</footer>
+  </main>
+</body>
+</html>

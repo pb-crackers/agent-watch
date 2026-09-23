@@ -1,0 +1,5 @@
+node_modules/
+.env
+.env.*
+.agent-watch/*
+!.agent-watch/changes.md
