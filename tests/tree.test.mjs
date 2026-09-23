@@ -36,7 +36,7 @@ test('conditional Jev tree applies only the chosen validated edit and logs its d
       return { answers: { [gate]: answer(id, options) }, model: 'test-jev' };
     };
     const draft = async () => [{ effect: 'A', content: 'Use for private documentation.\n' }, { effect: 'B', content: 'Use only for internal documentation.\n' }];
-    const tree = new DecisionTree(f.root, f.store, { consent: true, autonomous: true, windowTurns: 6 }, judge, draft);
+    const tree = new DecisionTree(f.root, f.store, { consent: true, autonomous: true, windowExchanges: 6 }, judge, draft);
     f.store.decision('warranted', 'prior', { state: { sessionId: 's1', turns: [{ id: 'turn1' }] } }, { answers: { yes: { type: 'noul', noul: .95 } } });
     await tree.run({ sessionId: 's1' });
     assert.deepEqual(gates, ['yes', 'target', 'direction', 'yes', 'candidate']);
@@ -77,6 +77,43 @@ test('windows do not mix sessions or abandoned branches', () => {
   assert.deepEqual(windowOf(events, 6, 's1', ['root', 'branch-a']).recentInputs.map(e => e.text), ['goal']);
   assert.deepEqual(windowOf(events, 6, 's1', ['root']).turns, []);
 });
+test('logical window retains earlier completed answers through a long tool-heavy exchange', () => {
+  const events = [
+    { id: 'i1', sessionId: 's1', kind: 'input', text: 'Update public docs' },
+    { id: 't1', sessionId: 's1', kind: 'turn', response: 'I updated private docs', stopReason: 'stop' },
+    { id: 'i2', sessionId: 's1', kind: 'input', text: 'No, public docs' },
+    ...Array.from({ length: 30 }, (_, i) => ({ id: `step${i}`, sessionId: 's1', kind: 'turn', response: '', stopReason: 'toolUse', costUsd: .01 })),
+    { id: 't2', sessionId: 's1', kind: 'turn', response: 'Corrected the public docs', stopReason: 'stop' },
+  ];
+  const result = windowOf(events, 20, 's1');
+  assert.deepEqual(result.recentInputs.map(e => e.id), ['i1', 'i2']);
+  assert.deepEqual(result.turns.map(e => e.id), ['t1', 't2']);
+  assert.equal(result.allTurns.length, 32);
+  assert.deepEqual(result.exchanges.map(e => e.turns.map(t => t.id)), [['t1'], ['t2']]);
+});
+test('two thousand tool events do not evict prior user exchanges or inflate Jev state', async () => {
+  const f = await fixture();
+  try {
+    for (let i = 0; i < 2100; i++) f.store.event({ id: `extra-${i}`, sessionId: 's1', kind: 'tool', at: '2026-03-11T00:04:00Z', name: 'read', output: 'x'.repeat(1000) });
+    const window = windowOf(f.store.recentExchanges('s1'), 20, 's1');
+    assert.deepEqual(window.recentInputs.map(e => e.id), ['input1', 'input2']);
+    assert.deepEqual(window.turns.map(e => e.id), ['turn1', 'turn2']);
+    assert.equal(window.exchanges[1].toolCount, 2100);
+    assert.equal(window.tools.length, 120);
+    assert.deepEqual(window.observedPaths, ['.pi/skills/docs/SKILL.md']);
+    assert.ok(JSON.stringify({ turns: window.turns, exchanges: window.exchanges, tools: window.tools }).length < 75000);
+  } finally { await f.cleanup(); }
+});
+test('an abandoned branch cannot provide the second warrant decision', async () => {
+  const f = await fixture(); let gates = 0;
+  try {
+    f.store.event({ id: 'branch-turn', sessionId: 's1', branchId: 'current', kind: 'turn', at: '2026-03-11T00:04:00Z', response: 'Still editing internal docs', stopReason: 'stop' });
+    f.store.decision('warranted', 'old', { state: { sessionId: 's1', branchId: 'abandoned', turns: [{ id: 'turn2' }] } }, { answers: { yes: { type: 'noul', noul: .99 } } });
+    await new DecisionTree(f.root, f.store, { consent: true, autonomous: true }, async () => { gates++; return { answers: { yes: { type: 'noul', noul: .99 } } }; }, async () => { throw Error('Must not draft'); }).run({ sessionId: 's1', branchIds: ['root', 'current'] });
+    assert.equal(gates, 1);
+    assert.equal(f.store.active(), undefined);
+  } finally { await f.cleanup(); }
+});
 test('invalid settings and extension syntax never become Jev candidates', () => {
   assert.equal(validCandidate('.pi/settings.json', '{bad'), false);
   assert.equal(validCandidate('.pi/settings.json', '{"retry":true}'), true);
@@ -94,6 +131,19 @@ test('emergency pause cannot keep a change during asynchronous verification', as
     assert.equal(f.store.active(), undefined);
   } finally { await f.cleanup(); }
 });
+test('active change is guarded even with only one input in a later session', async () => {
+  const f = await fixture();
+  try {
+    const before = await readFile(f.file, 'utf8'), after = 'Use only for public documentation.\n';
+    await writeFile(f.file, after);
+    f.store.change({ id: 'guard', path: '.pi/skills/docs/SKILL.md', before, after, baseHash: 'base', status: 'watching', at: '2026-03-11T00:00:00Z', detail: { baseline: { turns: [] } } });
+    f.store.event({ id: 'new-input', sessionId: 's2', kind: 'input', at: '2026-03-11T00:05:00Z', text: 'New request' });
+    f.store.event({ id: 'expensive-turn', sessionId: 's2', kind: 'turn', at: '2026-03-11T00:06:00Z', stopReason: 'toolUse', costUsd: 2, response: '', tools: [] });
+    await new DecisionTree(f.root, f.store, { consent: true, autonomous: true }, async () => { throw Error('Must not judge'); }).run({ sessionId: 's2' });
+    assert.equal(await readFile(f.file, 'utf8'), before);
+    assert.equal(f.store.active(), undefined);
+  } finally { await f.cleanup(); }
+});
 test('hard cost limit rolls back without asking Jev', async () => {
   const f = await fixture();
   try {
@@ -101,7 +151,7 @@ test('hard cost limit rolls back without asking Jev', async () => {
     await writeFile(f.file, after);
     f.store.change({ id: 'cost', path: '.pi/skills/docs/SKILL.md', before, after, baseHash: 'base', status: 'watching', at: '2026-03-11T00:00:00Z', detail: { baseTurn: 'turn1', baseline: { turns: [] } } });
     const tree = new DecisionTree(f.root, f.store, { consent: true, autonomous: true, maxTurnCostUsd: .5 }, async () => { throw new Error('Jev must not override a hard limit'); });
-    await tree.verify(f.store.active(), { turns: [{ id: 'later', at: '2026-03-11T00:01:00Z', costUsd: 1, tools: [] }] });
+    await tree.verify(f.store.active(), { turns: [], allTurns: [{ id: 'later', at: '2026-03-11T00:01:00Z', costUsd: 1, stopReason: 'toolUse', tools: [] }] });
     assert.equal(await readFile(f.file, 'utf8'), before);
   } finally { await f.cleanup(); }
 });
@@ -116,9 +166,10 @@ test('built-in signal pack is batched, informational, and scoped to the settled 
   const f = await fixture(); let calls = 0;
   try {
     f.store.event({ id: 'alien', sessionId: 'other', kind: 'input', at: '2026-03-11T00:03:01Z', text: 'unrelated user' });
-    await runSignals(f.store, { consent: true, windowTurns: 6 }, { id: 'settled', kind: 'session', reason: 'settled', sessionId: 's1' }, async (state, questions) => {
+    await runSignals(f.store, { consent: true, windowExchanges: 6 }, { id: 'settled', kind: 'session', reason: 'settled', sessionId: 's1' }, async (state, questions) => {
       calls++;
       assert.equal(state.recentInputs.includes('unrelated user'), false);
+      assert.deepEqual(state.exchanges.map(e => e.request), ['Update public docs', 'No, the public docs']);
       assert.deepEqual(Object.keys(questions), ['correction','looping','progress','completion','tool_fit','instruction_adherence','error_recovery']);
       return { model: 'fake', answers: { correction: { type: 'noul', noul: .9 } } };
     });
@@ -134,9 +185,9 @@ test('custom evaluation schedule uses Jev only at the configured boundary', asyn
     f.store.event({ id: 'tool-output', sessionId: 's1', kind: 'tool', at: '2026-03-11T00:03:30Z', name: 'read', isError: false, output: 'Public API returns an empty list.' });
     f.store.evaluation('custom', { description: 'Did Pi answer the request?', schedule: 'settled', every: 1, question: { type: 'noul', instructions: 'Did the assistant answer `goal`?' } });
     const judge = async state => { calls++; observedState = state; return { model: 'fake', answers: { evaluation: { type: 'noul', noul: .7 } } }; };
-    await runEvaluations(f.store, { consent: true, windowTurns: 6 }, { id: 'turn2', kind: 'turn', sessionId: 's1' }, judge);
+    await runEvaluations(f.store, { consent: true, windowExchanges: 6 }, { id: 'turn2', kind: 'turn', sessionId: 's1' }, judge);
     assert.equal(calls, 0);
-    await runEvaluations(f.store, { consent: true, windowTurns: 6 }, { id: 'settled', kind: 'session', reason: 'settled', sessionId: 's1' }, judge);
+    await runEvaluations(f.store, { consent: true, windowExchanges: 6 }, { id: 'settled', kind: 'session', reason: 'settled', sessionId: 's1' }, judge);
     assert.equal(calls, 1);
     assert.equal(observedState.tools.at(-1).output, 'Public API returns an empty list.');
     assert.equal(f.store.decisions()[0].gate, 'eval:custom');

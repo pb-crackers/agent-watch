@@ -15,6 +15,11 @@ export class Store {
   }
   event(e) { return this.db.prepare('INSERT OR IGNORE INTO events VALUES (?, ?, ?, ?, ?)').run(e.id, e.sessionId, e.kind, e.at, JSON.stringify(e)).changes > 0; }
   events(limit = 100) { return this.db.prepare('SELECT data FROM events ORDER BY rowid DESC LIMIT ?').all(limit).reverse().map(r => JSON.parse(r.data)); }
+  recentExchanges(sessionId, count = 20) {
+    count = Number.isInteger(count) ? Math.max(1, Math.min(count, 40)) : 20;
+    const boundary = this.db.prepare("SELECT rowid FROM events WHERE session = ? AND kind = 'input' ORDER BY rowid DESC LIMIT 1 OFFSET ?").get(sessionId, count - 1)?.rowid ?? 0;
+    return this.db.prepare('SELECT data FROM events WHERE session = ? AND rowid >= ? ORDER BY rowid').all(sessionId, boundary).map(r => JSON.parse(r.data));
+  }
   countTurns(sessionId) { return this.db.prepare("SELECT count(*) AS count FROM events WHERE session = ? AND kind = 'turn'").get(sessionId).count; }
   decision(gate, stateHash, request, response) { this.db.prepare('INSERT INTO decisions (at, gate, state_hash, request, response) VALUES (?, ?, ?, ?, ?)').run(new Date().toISOString(), gate, stateHash, JSON.stringify(request), JSON.stringify(response)); }
   decisions(limit = 30) { return this.db.prepare('SELECT at, gate, state_hash, request, response FROM decisions ORDER BY id DESC LIMIT ?').all(limit).map(r => ({ ...r, request: JSON.parse(r.request), response: JSON.parse(r.response) })); }
