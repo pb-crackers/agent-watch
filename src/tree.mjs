@@ -17,21 +17,21 @@ export class DecisionTree {
   }
   async run(event) {
     if (!this.config.consent || !this.config.autonomous || this.config.paused) return;
-    const events = this.store.events(250);
-    const window = windowOf(events, this.config.windowTurns, event?.sessionId, event?.branchIds);
+    const events = event?.sessionId ? this.store.recentExchanges(event.sessionId, this.config.windowExchanges ?? 20) : this.store.events(2000);
+    const window = windowOf(events, this.config.windowExchanges ?? 20, event?.sessionId, event?.branchIds);
     const last = window.turns.at(-1);
-    if (!last || window.recentInputs.length < 2) return;
     const active = this.store.active();
     if (active) return this.verify(active, window);
+    if (!last || window.recentInputs.length < 2) return;
     const known = await inventory(this.root);
-    const observed = [...(window.context?.contextFiles ?? []), ...(window.context?.extensionFiles ?? []), ...window.tools.map(t => t.path).filter(Boolean)];
+    const observed = [...(window.context?.contextFiles ?? []), ...(window.context?.extensionFiles ?? []), ...window.observedPaths];
     const seen = new Set(observed.map(p => isAbsolute(p) ? relative(this.root, p) : p));
     const files = known.filter(p => seen.has(p) || p === '.pi/settings.json').slice(0, 200);
     if (!files.length) return;
-    const state = { sessionId: last.sessionId, goal: window.recentInputs.at(-1)?.text ?? '', recentInputs: window.recentInputs.map(({ id, text }) => ({ id, text })), turns: window.turns.map(({ id, response, tools }) => ({ id, response, tools })), tools: window.tools.map(({ id, name, isError, arguments: args, output }) => ({ id, name, isError, arguments: args, output })), activeTools: window.context?.activeTools, harness: files };
+    const state = { sessionId: last.sessionId, branchId: last.branchId, goal: window.recentInputs.at(-1)?.text ?? '', recentInputs: window.recentInputs.map(({ id, text }) => ({ id, text })), turns: window.turns.map(({ id, response, tools }) => ({ id, response, tools })), exchanges: window.exchanges.map(({ input, turns, toolCount, toolErrors, toolNames }) => ({ request: input.text, answers: turns.map(t => t.response), toolCount, toolErrors, toolNames })), tools: window.tools.map(({ id, name, isError, arguments: args, output }) => ({ id, name, isError, arguments: args, output })), activeTools: window.context?.activeTools, harness: files };
     const warranted = await this.ask('warranted', state, { yes: noul('Would changing the project-local Pi harness likely fix a recurring issue shown in `recentInputs`, `turns` or `tools`, rather than merely continuing the user task?') });
     if (warranted.yes.noul < .8) return;
-    const prior = this.store.decisions(100).filter(d => d.gate === 'warranted' && d.request.state.sessionId === last.sessionId && d.request.state.turns.at(-1)?.id !== last.id && d.response.answers?.yes?.noul >= .8);
+    const prior = this.store.decisions(100).filter(d => d.gate === 'warranted' && d.request.state.sessionId === last.sessionId && (!event?.branchIds || d.request.state.branchId && event.branchIds.includes(d.request.state.branchId)) && d.request.state.turns.at(-1)?.id !== last.id && d.response.answers?.yes?.noul >= .8);
     if (!prior.length) return; // Two distinct settled turns must independently warrant a change.
     const target = await this.ask('target', state, { target: choice('Which observed harness file most likely contributed to this issue? Select none when evidence does not identify one.', [...files.map(path => ({ id: path, description: `${component(path)}: ${path}` })), { id: 'none', description: 'No supported harness file is clearly responsible' }]) });
     const path = pick(target.target);
@@ -71,7 +71,8 @@ export class DecisionTree {
   async verify(active, window) {
     if (this.config.paused) return this.rollback(active, 'Emergency pause');
     const after = window.turns.filter(t => t.at > active.at);
-    if (after.some(t => t.costUsd > (this.config.maxTurnCostUsd ?? 1) || t.durationMs > (this.config.maxTurnDurationMs ?? 180000)) || after.reduce((n, t) => n + (t.tools ?? []).filter(tool => tool.isError).length, 0) > (this.config.maxToolErrors ?? 3)) return this.rollback(active, 'Protected cost, duration, or tool-error limit exceeded');
+    const allAfter = (window.allTurns ?? window.turns).filter(t => t.at > active.at);
+    if (allAfter.some(t => t.costUsd > (this.config.maxTurnCostUsd ?? 1) || t.durationMs > (this.config.maxTurnDurationMs ?? 180000)) || allAfter.reduce((n, t) => n + (t.tools ?? []).filter(tool => tool.isError).length, 0) > (this.config.maxToolErrors ?? 3)) return this.rollback(active, 'Protected cost, duration, or tool-error limit exceeded');
     if (after.length < 2) return;
     const state = { originalEvidence: active.detail.baseline, change: { path: active.path, direction: active.detail.direction }, laterTurns: after.map(({ id, response, tools }) => ({ id, response, tools })), recentInputs: window.recentInputs.map(({ id, text }) => ({ id, text })) };
     const result = await this.ask('outcome', state, { outcome: choice('Compared with the earlier harness failure, what do `laterTurns` show? Choose unclear if tasks are not comparable.', [{ id: 'better', description: 'Comparable later behavior improved' }, { id: 'worse', description: 'Comparable later behavior regressed' }, { id: 'unclear', description: 'Not enough comparable evidence' }]) });

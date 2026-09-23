@@ -11,7 +11,7 @@ Agent Watch is a free, local-first CLI and web dashboard for [Pi](https://github
 
 ```mermaid
 flowchart LR
-  A[Pi conversation + tools] --> B[Redacted sliding window]
+  A[Pi conversation + tools] --> B[20 redacted user exchanges]
   B --> C{Jev decision tree}
   C -->|No or unsure| A
   C -->|Target + direction| D[Tool-free Pi drafts alternatives]
@@ -61,7 +61,7 @@ node src/cli.mjs eval-add "Did the agent follow the user's requested scope?" \
   --schedule turn --every 10 --project /path/to/disposable-project
 ```
 
-A tool-free Pi call proposes one typed Jev question. You **see and confirm** it before activation. Schedules are every N turns, after an agent settles, or on session shutdown. Edit, disable, or remove definitions in the dashboard or CLI. **These custom results are informational today**: they do not steer the autonomous decision tree. The built-in signal pack also does **not yet** change decisions or protect against regressions. See the [exact question pack and remaining gaps](docs/evaluations.md).
+A tool-free Pi call proposes one typed Jev question. You **see and confirm** it before activation. Schedules are every N turns, after an agent settles, or on session shutdown. Edit, disable, or remove definitions in the dashboard or CLI. **These custom results are informational today**: they do not steer the autonomous decision tree. The built-in signal pack also does **not yet** change decisions or protect against regressions. Evidence is grouped across the latest 20 user exchanges by default, not six raw model turns. See the [exact question pack and remaining gaps](docs/evaluations.md).
 
 ### Boundaries and limitations
 

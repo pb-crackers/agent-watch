@@ -4,7 +4,7 @@ Agent Watch has **three evaluation paths**: a built-in informational signal pack
 
 ## Built-in signal pack (informational)
 
-With per-project Jev consent, each settled Pi agent response sends **one batched request** over a redacted, session/branch-scoped rolling window. This pack records signals; it does **not** authorize edits or feed into the autonomous tree today. The exact questions live in `signalQuestions` in [`src/evals.mjs`](../src/evals.mjs):
+With per-project Jev consent, each settled Pi agent response sends **one batched request** over a redacted, session/branch-scoped window of up to **20 user exchanges** (configurable with `windowExchanges` in `.agent-watch/config.json`; older `windowTurns` settings no longer affect the window). Each exchange groups the user request, up to two latest completed assistant answers, and tool counts/errors. The 40 latest completed answers are also available as a flat list; each request/answer is capped at 1,200 characters. The 120 latest tool events provide at most 500 characters of redacted output each. These are payload limits, not six-turn history limits. This pack records signals; it does **not** authorize edits or feed into the autonomous tree today. The exact questions live in `signalQuestions` in [`src/evals.mjs`](../src/evals.mjs):
 
 | Key / type | Exact question |
 | --- | --- |
@@ -20,7 +20,7 @@ The result appears under `signals` in the decision history. A low answer to a co
 
 ## Built-in decision tree
 
-The daemon invokes the tree when Pi emits `agent_settled` and the project has consented to Jev and enabled autonomous changes. It builds a redacted window of the latest **six** turns by default, scoped to the settled session and its active branch. It requires at least two recent user inputs, a settled turn, and an observed project-local harness file. Ineligible or uncertain paths stop without edits. The daemon budget defaults to 100 decision records/day per project. The thresholds below are **uncalibrated prototype values**.
+The daemon invokes the tree when Pi emits `agent_settled` and the project has consented to Jev and enabled autonomous changes. It uses the same up-to-**20-exchange** window, rather than six raw model turns, scoped to the settled session and active branch. Intermediary tool-call turns do not displace completed answers; hard cost/time/error limits still inspect those turns. It requires at least two recent user inputs, a settled turn, and an observed project-local harness file. Ineligible or uncertain paths stop without edits. The daemon budget defaults to 100 decision records/day per project. The thresholds below are **uncalibrated prototype values**.
 
 | Order | Key / type | Exact question sent to Jev | Proceed when |
 | --- | --- | --- | --- |

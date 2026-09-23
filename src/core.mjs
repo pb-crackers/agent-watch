@@ -20,7 +20,7 @@ export function safeEvent(event) { return redact(JSON.parse(JSON.stringify(event
 export async function initProject(root, config = {}) {
   const dir = dataDir(root);
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  await writeFile(settingsPath(root), JSON.stringify({ consent: false, autonomous: false, maxDailyRequests: 100, maxTurnCostUsd: 1, maxTurnDurationMs: 180000, maxToolErrors: 3, windowTurns: 6, ...config }, null, 2) + '\n', { mode: 0o600 });
+  await writeFile(settingsPath(root), JSON.stringify({ consent: false, autonomous: false, maxDailyRequests: 100, maxTurnCostUsd: 1, maxTurnDurationMs: 180000, maxToolErrors: 3, windowExchanges: 20, ...config }, null, 2) + '\n', { mode: 0o600 });
   await writeFile(join(dir, 'changes.md'), '# Agent Watch changes\n\n', { flag: 'a', mode: 0o600 });
 }
 export async function loadConfig(root) { return JSON.parse(await readFile(settingsPath(root), 'utf8')); }
@@ -55,12 +55,25 @@ export async function inventory(root) {
   await walk('.pi');
   return paths.sort();
 }
-export function windowOf(events, size = 6, sessionId, branchIds) {
+export function windowOf(events, size = 20, sessionId, branchIds) {
   if (sessionId) events = events.filter(e => e.sessionId === sessionId && (!branchIds || !e.branchId || branchIds.includes(e.branchId)));
-  const turns = events.filter(e => e.kind === 'turn');
-  const chosen = turns.slice(-size);
-  const ids = new Set(chosen.map(e => e.sessionId));
-  return { turns: chosen, recentInputs: events.filter(e => e.kind === 'input' && ids.has(e.sessionId)).slice(-size), tools: events.filter(e => e.kind === 'tool' && ids.has(e.sessionId)).slice(-size * 3), context: events.filter(e => e.kind === 'session' && e.reason === 'context' && ids.has(e.sessionId)).at(-1) };
+  size = Number.isInteger(size) ? Math.max(1, Math.min(size, 40)) : 20;
+  const inputs = events.filter(e => e.kind === 'input').slice(-size);
+  const start = inputs.length ? events.indexOf(inputs[0]) : 0;
+  const span = events.slice(start);
+  const allTurns = span.filter(e => e.kind === 'turn');
+  const briefTurn = e => ({ ...e, response: e.response?.slice(0, 1200) });
+  const turns = allTurns.filter(e => e.stopReason !== 'toolUse').slice(-40).map(briefTurn);
+  const recentInputs = inputs.map(e => ({ ...e, text: e.text?.slice(0, 1200) }));
+  const exchanges = inputs.map((input, i) => {
+    const next = inputs[i + 1];
+    const segment = events.slice(events.indexOf(input), next ? events.indexOf(next) : undefined);
+    const used = segment.filter(e => e.kind === 'tool');
+    return { input: recentInputs[i], turns: segment.filter(e => e.kind === 'turn' && e.stopReason !== 'toolUse').slice(-2).map(briefTurn), toolCount: used.length, toolErrors: used.filter(e => e.isError).length, toolNames: [...new Set(used.map(e => e.name))].slice(0, 40) };
+  });
+  // ponytail: preserve all 20 exchange summaries but cap detailed evidence; raise caps if large traces prove necessary.
+  const tools = span.filter(e => e.kind === 'tool').slice(-120).map(e => ({ ...e, output: e.output?.slice(0, 500), arguments: e.arguments?.slice(0, 300) }));
+  return { turns, allTurns, recentInputs, exchanges, tools, observedPaths: [...new Set(span.filter(e => e.kind === 'tool' && e.path).map(e => e.path))].slice(-200), context: events.filter(e => e.kind === 'session' && e.reason === 'context').at(-1) };
 }
 export async function jev(state, questions, { key = process.env.TYPESAFE_API_KEY, model = 'jev-latest', fetcher = fetch } = {}) {
   if (!key) throw new Error('TYPESAFE_API_KEY is required');

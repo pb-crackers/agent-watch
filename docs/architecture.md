@@ -27,7 +27,7 @@ flowchart LR
 ## The loop
 
 1. **Observe** — A Pi extension records user messages, assistant turns, tool calls/results, active tools, loaded skills, model settings, and harness configuration.
-2. **Window** — Agent Watch maintains a rolling window of the current task and recent turns instead of repeatedly judging the full session.
+2. **Window** — Agent Watch groups up to 20 recent user exchanges with completed assistant answers and tool outcomes. Tool-call-only model turns cannot evict a previous answer; detailed tool evidence is capped at the latest 120 events. Summary counts cover every tool in those exchanges.
 3. **Measure, then decide** — One batched Jev request records informational correction/progress/loop/completion/tool-fit/adherence/recovery signals after each settled response. Separately, Jev first judges whether *any* harness change is warranted. Only then does it choose an observed component and a component-specific improvement direction. Each answer determines the next question; uncertain paths stop and keep observing.
 4. **Choose an improvement** — Once Jev selects a direction, a separate headless Pi run drafts two or three distinct project-local harness patches in isolation. Code rejects invalid or forbidden patches. Jev judges whether any candidate is suitable, then chooses a specific surviving patch or `none`; the improver never selects its own winner. The full tree lives in [Jev decision tree](jev-decision-loop.md).
 5. **Record** — Before applying Jev's chosen patch, Agent Watch saves the previous contents. It appends the evidence, alternatives, selection, diff, and status to `.agent-watch/changes.md`.
